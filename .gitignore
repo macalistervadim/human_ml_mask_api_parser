@@ -206,3 +206,5 @@ node_modules/
 
 .qodo
 exp-schp-201908301523-atr.pth
+
+debug/

@@ -94,6 +94,7 @@ def generate_inpainting_mask_from_parsing(
 
     # ================== STEP 7: SOFT EDGES (critical for SD) ==================
     mask = (mask * 255).astype(np.uint8)
+    # Temporarily disable blurring to see clean mask
     mask = cv2.GaussianBlur(mask, (21, 21), 0)
     mask = cv2.dilate(mask, np.ones((7, 7), np.uint8), iterations=1)
     mask = cv2.GaussianBlur(mask, (25, 25), 0)
@@ -137,7 +138,6 @@ if __name__ == "__main__":
     # ================== STEP 5: COMBINE & CLIP TO HUMAN AREA ==================
     mask_combined = (expanded_clothes | mask_body_near_clothes).astype(np.uint8)
     mask = mask_combined * mask_human_buffer  # не выходим за пределы человека
-
 
 
     # ================== STEP 6: PROTECT HEAD ==================

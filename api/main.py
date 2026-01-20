@@ -1,12 +1,13 @@
 import base64
-import binascii
 import io
+import os
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel, Field
 from PIL import Image
 
+import parsing_inference
 from generate_mask import (
     BODY_LABELS,
     CLOTHING_LABELS,
@@ -16,11 +17,15 @@ from generate_mask import (
 )
 
 
+# Local debug flag: set to True when running locally
+DEBUG_LOCAL = os.getenv("DEBUG_LOCAL", "false").lower() == "true"
+
+
 app = FastAPI()
 
 
 class GenerateMaskRequest(BaseModel):
-    parsing_png_base64: str = Field(..., description="Base64-encoded PNG parsing map (mode 'P' preferred)")
+    image_base64: str = Field(..., description="Base64-encoded PNG parsing map (mode 'P' preferred)")
 
     target_labels: list[int] | None = Field(
         default=None,
@@ -70,22 +75,31 @@ def health() -> dict:
 
 
 @app.post("/api/generate-mask/", response_model=GenerateMaskResponse)
-def generate_mask_endpoint(payload: GenerateMaskRequest) -> GenerateMaskResponse:
+def generate_mask_endpoint(req: GenerateMaskRequest) -> GenerateMaskResponse:
+    # --- decode base64 image ---
     try:
-        parsing_bytes = base64.b64decode(payload.parsing_png_base64, validate=True)
-    except (binascii.Error, ValueError) as e:
-        raise HTTPException(status_code=400, detail=f"Invalid base64: {str(e)}")
-
-    try:
-        parsing = load_parsing_map_from_png_bytes(parsing_bytes)
+        image_bytes = base64.b64decode(req.image_base64)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid PNG: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Invalid image_base64: {e}")
 
+    # --- run parsing ---
+    parsing_img = parsing_inference.run_parsing_inference(
+        image_bytes=image_bytes,
+        model_path="exp-schp-201908301523-atr.pth",
+    )
+
+    if DEBUG_LOCAL:
+        os.makedirs("debug", exist_ok=True)
+        parsing_img.save("debug/debug_parsing.png")
+
+    parsing = np.array(parsing_img)
+
+    # --- resolve targets ---
     try:
-        if payload.target_labels is not None:
-            target = set(payload.target_labels)
+        if req.target_labels is not None:
+            target = set(req.target_labels)
         else:
-            target = _resolve_groups(payload.target_groups)
+            target = _resolve_groups(req.target_groups)
 
         if not target:
             raise HTTPException(
@@ -100,7 +114,7 @@ def generate_mask_endpoint(payload: GenerateMaskRequest) -> GenerateMaskResponse
             head_labels=HEAD_LABELS,
         )
 
-        protect = set(payload.protect_labels or []) | _resolve_groups(payload.protect_groups)
+        protect = set(req.protect_labels or []) | _resolve_groups(req.protect_groups)
         if protect:
             protect_mask = np.isin(parsing, list(protect))
             mask[protect_mask] = 0
@@ -110,8 +124,13 @@ def generate_mask_endpoint(payload: GenerateMaskRequest) -> GenerateMaskResponse
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # --- encode output mask to base64 ---
     out_img = Image.fromarray(mask, mode="L")
     buf = io.BytesIO()
     out_img.save(buf, format="PNG")
     mask_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    if DEBUG_LOCAL:
+        out_img.save("debug/debug_mask.png")
+
     return GenerateMaskResponse(mask_png_base64=mask_b64)

@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./debug:/app/debug
+      - ./api:/app/api
+      - ./parsing_inference.py:/app/parsing_inference.py
+      - ./generate_mask.py:/app/generate_mask.py
+      - ./networks:/app/networks
+      - ./utils:/app/utils
+      - ./datasets:/app/datasets
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - DEBUG_LOCAL=True
+    networks:
+      backend:
+        aliases:
+          - api
+
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - backend
+
+networks:
+  backend:
+    external:
+      name: human_parser_backend
