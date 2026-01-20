@@ -103,14 +103,20 @@ def main():
 
     model = networks.init_model('resnet101', num_classes=num_classes, pretrained=None)
 
-    state_dict = torch.load(args.model_restore)['state_dict']
+    try:
+        state_dict = torch.load(args.model_restore, map_location='cpu', weights_only=False)['state_dict']
+    except Exception as e:
+        print(f"Error loading model from {args.model_restore}. Please ensure the file is a valid PyTorch checkpoint.")
+        raise e
     from collections import OrderedDict
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         name = k[7:]  # remove `module.`
         new_state_dict[name] = v
     model.load_state_dict(new_state_dict)
-    model.cuda()
+    # Use CPU on macOS
+    device = torch.device('cpu')
+    model.to(device)
     model.eval()
 
     transform = transforms.Compose([
@@ -133,7 +139,7 @@ def main():
             w = meta['width'].numpy()[0]
             h = meta['height'].numpy()[0]
 
-            output = model(image.cuda())
+            output = model(image.to(device))
             upsample = torch.nn.Upsample(size=input_size, mode='bilinear', align_corners=True)
             upsample_output = upsample(output[0][-1][0].unsqueeze(0))
             upsample_output = upsample_output.squeeze()

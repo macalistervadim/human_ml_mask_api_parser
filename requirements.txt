@@ -1,1 +1,7 @@
-opencv-python==4.4.0.46
+opencv-python-headless==4.10.0.84
+ninja
+
+fastapi==0.115.6
+uvicorn[standard]==0.30.6
+pillow==10.4.0
+numpy==1.26.4

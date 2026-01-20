@@ -121,9 +121,3 @@ Please cite our work if you find this repo useful in your research.
 ![demo-lip](./mhp_extension/demo/demo_global_human_parsing.png)
 * Multiple Human Parsing Result.
 ![demo-lip](./mhp_extension/demo/demo_multiple_human_parsing.png)
-
-
-## Related
-Our code adopts the [InplaceSyncBN](https://github.com/mapillary/inplace_abn) to save gpu memory cost.
-
-There is also a [PaddlePaddle](https://github.com/PaddlePaddle/PaddleSeg/tree/develop/contrib/ACE2P) Implementation of this project.

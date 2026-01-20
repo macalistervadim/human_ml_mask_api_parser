@@ -9,6 +9,13 @@ except ImportError:
 
 from .functions import *
 
+# Check if CUDA backend is available
+try:
+    from .functions import _backend
+    _has_cuda_backend = _backend is not None
+except:
+    _has_cuda_backend = False
+
 
 class ABN(nn.Module):
     """Activated Batch Normalization
@@ -105,9 +112,13 @@ class InPlaceABN(ABN):
         super(InPlaceABN, self).__init__(num_features, eps, momentum, affine, activation, slope)
 
     def forward(self, x):
-        x, _, _ = inplace_abn(x, self.weight, self.bias, self.running_mean, self.running_var,
-                           self.training, self.momentum, self.eps, self.activation, self.slope)
-        return x
+        if _has_cuda_backend:
+            x, _, _ = inplace_abn(x, self.weight, self.bias, self.running_mean, self.running_var,
+                               self.training, self.momentum, self.eps, self.activation, self.slope)
+            return x
+        else:
+            # Fall back to regular ABN forward when CUDA is not available
+            return super(InPlaceABN, self).forward(x)
 
 
 class InPlaceABNSync(ABN):
@@ -116,9 +127,13 @@ class InPlaceABNSync(ABN):
     """
 
     def forward(self, x):
-        x, _, _ =  inplace_abn_sync(x, self.weight, self.bias, self.running_mean, self.running_var,
-                                   self.training, self.momentum, self.eps, self.activation, self.slope)
-        return x
+        if _has_cuda_backend:
+            x, _, _ =  inplace_abn_sync(x, self.weight, self.bias, self.running_mean, self.running_var,
+                                       self.training, self.momentum, self.eps, self.activation, self.slope)
+            return x
+        else:
+            # Fall back to regular ABN forward when CUDA is not available
+            return super(InPlaceABNSync, self).forward(x)
 
     def __repr__(self):
         rep = '{name}({num_features}, eps={eps}, momentum={momentum},' \
