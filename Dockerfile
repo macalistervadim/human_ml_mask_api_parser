@@ -33,7 +33,7 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["gunicorn", "api:app", \
+CMD ["gunicorn", "api.main:app", \
      "-k", "uvicorn.workers.UvicornWorker", \
      "-w", "2", \
      "-b", "0.0.0.0:8000", \
