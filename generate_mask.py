@@ -1,10 +1,12 @@
 from PIL import Image
 import io
 import numpy as np
+from typing import Set, Optional
+
 import cv2
 
 # ================== PATHS ==================
-INPUT_PARSING = "output/IMAGE 2026-01-16 17:04:31.png"
+INPUT_PARSING = "/Users/macbook/WORK/projects/human_parser/output/IMAGE 2026-01-21 16:09:03.png"
 OUTPUT_MASK = "clothing_inpaint_mask.png"
 
 # ================== ATR LABELS ==================
@@ -41,9 +43,9 @@ def load_parsing_map_from_png_bytes(png_bytes: bytes) -> np.ndarray:
 
 def generate_inpainting_mask_from_parsing(
     parsing: np.ndarray,
-    target_labels: set[int],
-    body_labels: set[int] | None = None,
-    head_labels: set[int] | None = None,
+    target_labels: Set[int],
+    body_labels: Optional[Set[int]] = None,
+    head_labels: Optional[Set[int]] = None,
 ) -> np.ndarray:
     if parsing.ndim != 2:
         raise ValueError("parsing must be a 2D array")
@@ -121,7 +123,6 @@ if __name__ == "__main__":
         mask_clothes = np.isin(parsing, list(CLOTHING_LABELS)).astype(np.uint8)
 
     # ================== STEP 2: AGGRESSIVE EXPANSION (captures shadows & folds) ==================
-    # Расширяем одежду на 35–45 пикселей (в зависимости от разрешения)
     expand_kernel = np.ones((40, 40), np.uint8)
     expanded_clothes = cv2.dilate(mask_clothes, expand_kernel, iterations=1)
 
@@ -134,60 +135,40 @@ if __name__ == "__main__":
     HUMAN_LABELS = CLOTHING_LABELS | BODY_LABELS | HEAD_LABELS
     mask_human = np.isin(parsing, list(HUMAN_LABELS)).astype(np.uint8)
     mask_human_buffer = cv2.dilate(mask_human, np.ones((25, 25), np.uint8), iterations=1)
-
-    # ================== STEP 5: COMBINE & CLIP TO HUMAN AREA ==================
     mask_combined = (expanded_clothes | mask_body_near_clothes).astype(np.uint8)
     mask = mask_combined * mask_human_buffer  # не выходим за пределы человека
 
-
-    # ================== STEP 6: PROTECT HEAD ==================
     head_mask = np.isin(parsing, list(HEAD_LABELS))
     mask[head_mask] = 0
 
-
-    # ================== STEP 6.5: REMOVE HAIR OVER CHEST ==================
-
-    # маска волос
     mask_hair = np.isin(parsing, [HAIR]).astype(np.uint8)
 
-    # маска тела (без головы)
     mask_torso = np.isin(parsing, list(BODY_LABELS)).astype(np.uint8)
 
-    # расширяем тело вверх (зона груди)
     torso_expand = cv2.dilate(
         mask_torso,
         np.ones((35, 35), np.uint8),
         iterations=1
     )
 
-    # волосы, которые ЛЕЖАТ НА ТЕЛЕ
     hair_on_body = mask_hair & torso_expand
 
-    # НИКОГДА не трогаем лицо и верх головы
     face_mask = np.isin(parsing, [FACE]).astype(np.uint8)
     face_buffer = cv2.dilate(face_mask, np.ones((45, 45), np.uint8), iterations=1)
 
     hair_on_body[face_buffer == 1] = 0
 
-    # добавляем в маску
     mask = mask | hair_on_body
 
-
-    # ================== STEP 7: SOFT EDGES (critical for SD) ==================
     mask = (mask * 255).astype(np.uint8)
 
-    # Первое размытие — для плавност
     mask = cv2.GaussianBlur(mask, (21, 21), 0)
 
-    # Второе расширение — чтобы не пропустить уголки
     mask = cv2.dilate(mask, np.ones((7, 7), np.uint8), iterations=1)
 
-    # Финальное размытие — мягкий градиент
     mask = cv2.GaussianBlur(mask, (25, 25), 0)
 
-    # Повышаем контраст, чтобы SD лучше "увидел" маску
     mask = np.clip(mask * 1.3, 0, 255).astype(np.uint8)
 
     # ================== SAVE ==================
     Image.fromarray(mask, mode="L").save(OUTPUT_MASK)
-    print("✅ Inpainting mask saved:", OUTPUT_MASK)
